@@ -1,4 +1,4 @@
-# Nexify Watch 🎬
+# Kirus shows 🎬
 
 > A super modern, black & white streaming platform with cinematic poster backgrounds
 
