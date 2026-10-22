@@ -1,6 +1,6 @@
 // API Configuration
-const API_BASE_URL = 'https://nexi.k.vu/Nexify-watch/v/api.php';
-const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/';
+const API_BASE_URL = '4caaaf539039f193ed6b68eeb96fcbd4';
+const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
 // State Management
 const state = {
