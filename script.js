@@ -1,5 +1,6 @@
-// API Configuration
-const API_BASE_URL = '4caaaf539039f193ed6b68eeb96fcbd4';
+// API Configuration (Direct TMDB API)
+const TMDB_API_KEY = '4caaaf539039f193ed6b68eeb96fcbd4';
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w500';
 
 // State Management
@@ -17,19 +18,48 @@ const state = {
   }
 };
 
-// API Functions
+// Direct TMDB API Fetch Function
 async function fetchAPI(action, params = {}) {
   try {
+    let endpoint = '';
     const queryParams = new URLSearchParams({
-      action,
+      api_key: TMDB_API_KEY,
       ...params
     });
-    
-    const response = await fetch(`${API_BASE_URL}?${queryParams}`);
+
+    if (action === 'trending') {
+      const type = params.type || 'movie';
+      endpoint = `/trending/${type}/day`;
+      queryParams.delete('type');
+    } else if (action === 'details') {
+      const type = params.type || 'movie';
+      const id = params.id;
+      endpoint = `/${type}/${id}`;
+      queryParams.delete('type');
+      queryParams.delete('id');
+    } else if (action === 'videos') {
+      const type = params.type || 'movie';
+      const id = params.id;
+      endpoint = `/${type}/${id}/videos`;
+      queryParams.delete('type');
+      queryParams.delete('id');
+    } else if (action === 'search') {
+      endpoint = `/search/multi`;
+      queryParams.delete('type');
+    } else if (action === 'people_popular') {
+      endpoint = `/person/popular`;
+    } else {
+      // Category endpoints like now_playing, popular, top_rated, upcoming, airing_today, on_the_air
+      const type = params.type || 'movie';
+      endpoint = `/${type}/${action}`;
+      queryParams.delete('type');
+    }
+
+    const response = await fetch(`${TMDB_BASE_URL}${endpoint}?${queryParams}`);
     const data = await response.json();
     
-    if (data.error) {
-      console.error('API Error:', data.error);
+    if (data.status_code && data.status_message) {
+      console.error('TMDB API Error:', data.status_message);
       return null;
     }
     
@@ -98,6 +128,11 @@ async function renderHomePage() {
   await fetchTrending(state.currentCategory);
   const content = document.getElementById('content');
   
+  if (!state.data.trending.length) {
+    content.innerHTML = '<div style="text-align:center; padding:50px;">Failed to load trending items. Please check your API configuration.</div>';
+    return;
+  }
+
   const randomItem = state.data.trending[Math.floor(Math.random() * state.data.trending.length)];
   const mediaType = randomItem.media_type || 'movie';
   
@@ -109,7 +144,7 @@ async function renderHomePage() {
         <div class="hero-info">
           <h1 class="hero-title">${randomItem.title || randomItem.name}</h1>
           <div class="hero-meta">
-            <span class="hero-score">${Math.round(randomItem.vote_average * 10)}%</span>
+            <span class="hero-score">${Math.round((randomItem.vote_average || 0) * 10)}%</span>
             <span>${randomItem.release_date || randomItem.first_air_date || 'N/A'}</span>
             <span>${mediaType === 'movie' ? 'Movie' : 'TV Show'}</span>
           </div>
@@ -178,7 +213,7 @@ async function renderPopularPage() {
         </div>
       </div>
       <div class="cards-grid">
-        ${state.data.popular.map(item => createCard(item)).join('')}
+        ${state.data.popular.map(item => createCard(item, state.currentCategory)).join('')}
       </div>
     </div>
   `;
@@ -254,7 +289,7 @@ async function renderDetailsPage() {
   const title = data.title || data.name;
   const posterUrl = getImageUrl(data.poster_path);
   const backdropUrl = getImageUrl(data.backdrop_path, 'original');
-  const rating = Math.round(data.vote_average * 10);
+  const rating = Math.round((data.vote_average || 0) * 10);
   const releaseDate = data.release_date || data.first_air_date || 'N/A';
   const runtime = data.runtime || data.episode_run_time?.[0] || 'N/A';
   const genres = data.genres?.map(g => g.name).join(', ') || 'N/A';
@@ -304,7 +339,7 @@ function createCard(item, mediaType = null) {
   const type = mediaType || item.media_type || 'movie';
   const title = item.title || item.name;
   const posterUrl = getImageUrl(item.poster_path);
-  const rating = Math.round(item.vote_average * 10);
+  const rating = Math.round((item.vote_average || 0) * 10);
   const year = (item.release_date || item.first_air_date || '').split('-')[0];
   
   return `
@@ -327,7 +362,7 @@ function createHorizontalCard(item) {
   const type = item.media_type || 'movie';
   const title = item.title || item.name;
   const backdropUrl = getImageUrl(item.backdrop_path, 'w780');
-  const rating = Math.round(item.vote_average * 10);
+  const rating = Math.round((item.vote_average || 0) * 10);
   const year = (item.release_date || item.first_air_date || '').split('-')[0];
   
   return `
@@ -384,8 +419,7 @@ async function fetchTV(category = 'airing_today') {
 }
 
 async function fetchPeople() {
-  // People endpoint not available in PHP API, using popular movies instead
-  const data = await fetchAPI('popular', { type: 'movie' });
+  const data = await fetchAPI('people_popular');
   state.data.people = data?.results || [];
 }
 
@@ -421,8 +455,8 @@ async function handleSearch(query) {
     return;
   }
   
-  const data = await fetchAPI('search', { query, type: 'movie' });
-  const results = data?.results?.slice(0, 10) || [];
+  const data = await fetchAPI('search', { query });
+  const results = data?.results?.filter(item => item.media_type === 'movie' || item.media_type === 'tv' || item.media_type === 'person').slice(0, 10) || [];
   
   const searchResults = document.getElementById('searchResults');
   
@@ -528,7 +562,6 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       const page = link.dataset.page;
       
-      // Set default category based on page
       let category = 'all';
       if (page === 'popular') category = 'movie';
       if (page === 'movies') category = 'now_playing';
